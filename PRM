@@ -1,0 +1,231 @@
+import tkinter as tk
+from tkinter import ttk
+import pandas as pd
+import os
+from datetime import datetime
+
+def carregar_dados():
+    try:
+        # Ler os dados da planilha Excel de cupons
+        df_cupons = pd.read_excel("C:/Users/Beep Saude.BEEP1441/OneDrive/Documentos/Sales/Teste_Calculadora/Calculadora_TrocaDePontos/Calculadora_PontosMédicos.xlsx")
+
+        # Atualizar as opções da lista suspensa de cupons
+        combo_cupons["values"] = df_cupons.apply(lambda row: f"{row['Cupom_Médico']} - {row['Pontos']} pontos", axis=1).tolist()
+
+        # Armazenar os dados de cupons para referência futura
+        combo_cupons.cupons_data = df_cupons
+    except Exception as e:
+        print(f"Erro ao carregar dados de cupons: {e}")
+
+    try:
+        # Ler os dados da planilha Excel de produtos
+        df_produtos = pd.read_excel("C:/Users/Beep Saude.BEEP1441/OneDrive/Documentos/Sales/Teste_Calculadora/Calculadora_TrocaDePontos/Calculadora_PontosProdutos.xlsx")
+
+        # Obter a coluna de produtos
+        produtos = df_produtos["Nome do Produto"].tolist()
+        
+        # Atualizar as opções da lista suspensa de produtos
+        combo_produtos["values"] = produtos
+
+        # Armazenar os dados de produtos para referência futura
+        combo_produtos.produtos_data = df_produtos
+    except Exception as e:
+        print(f"Erro ao carregar dados de produtos: {e}")
+
+def selecionar_cupom(event):
+    selected_cupom = combo_cupons.get().split(" - ")[0]  # Extrair o nome do cupom
+    label_resultado.config(text=f"Cupom selecionado: {selected_cupom}")
+
+def selecionar_produto(event):
+    selected_produto = combo_produtos.get()
+    label_resultado.config(text=f"Produto selecionado: {selected_produto}")
+
+def verificar_pontuacao():
+    selected_cupom = combo_cupons.get().split(" - ")[0]
+    selected_produto = combo_produtos.get()
+
+    # Obter a quantidade de produtos selecionados
+    try:
+        quantidade = int(entry_quantidade.get())
+    except ValueError:
+        quantidade = 1
+
+    # Verificar se o cupom tem pontuação suficiente para o produto selecionado
+    produto_row = combo_produtos.produtos_data.loc[combo_produtos.produtos_data["Nome do Produto"] == selected_produto]
+    pontuacao_produto = produto_row["Pontuacao"].values[0] * quantidade
+
+    cupom_row = combo_cupons.cupons_data.loc[combo_cupons.cupons_data["Cupom_Médico"] == selected_cupom]
+    pontuacao_cupom = cupom_row["Pontos"].values[0]
+    
+    percentual_atingido = (pontuacao_cupom / pontuacao_produto) * 100
+
+    label_resultado.config(text=f"Cupom {selected_cupom} tem {pontuacao_cupom} pontos. Pontuação necessária para {quantidade} {selected_produto}(s) é {pontuacao_produto} pontos. Percentual atingido: {percentual_atingido:.0f}%")
+
+# Inicializar o índice aleatório a partir de um arquivo
+arquivo_indice = r"C:\Users\Beep Saude.BEEP1441\OneDrive\Documentos\Sales\Teste_Calculadora\Calculadora_TrocaDePontos\cod_aleatorio.txt"
+
+if os.path.isfile(arquivo_indice):
+    with open(arquivo_indice, "r+") as file:
+        indice_aleatorio = int(file.read())
+else:
+    # Se o arquivo não existir, inicializar o índice com um valor padrão
+    indice_aleatorio = 1698
+
+def salvar_indice_aleatorio():
+    # Salvar o índice aleatório no arquivo
+    with open(arquivo_indice, "w") as file:
+        file.write(str(indice_aleatorio))
+
+def registrar_troca(codigo_troca, selected_cupom, selected_produto, quantidade):
+    registro_trocas = "C:/Users/Beep Saude.BEEP1441/OneDrive/Documentos/Sales/Teste_Calculadora/Calculadora_TrocaDePontos/registro_trocas.csv"
+
+    # Verificar se o arquivo já existe
+    if os.path.isfile(registro_trocas):
+        # Adicionar nova troca ao arquivo existente
+        df_registro = pd.read_csv(registro_trocas)
+    else:
+        # Criar um novo DataFrame para armazenar as trocas
+        df_registro = pd.DataFrame(columns=["Código de Troca", "Cupom", "Produto", "Quantidade", "Data"])
+
+    # Adicionar os dados da nova troca
+    data_troca = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    nova_troca = {"Código de Troca": codigo_troca, "Cupom": selected_cupom, "Produto": selected_produto, "Quantidade": quantidade, "Data": data_troca}
+    df_registro = df_registro.append(nova_troca, ignore_index=True)
+
+    # Salvar o DataFrame atualizado de volta no arquivo CSV
+    df_registro.to_csv(registro_trocas, index=False)
+
+def aceitar_troca():
+    global indice_aleatorio  
+    selected_cupom = combo_cupons.get().split(" - ")[0]
+    selected_produto = combo_produtos.get()
+
+    # Obter a quantidade de produtos selecionados
+    try:
+        quantidade = int(entry_quantidade.get())
+    except ValueError:
+        quantidade = 1
+
+    # Verificar se o cupom tem pontuação suficiente para o produto selecionado
+    produto_row = combo_produtos.produtos_data.loc[combo_produtos.produtos_data["Nome do Produto"] == selected_produto]
+    pontuacao_produto = produto_row["Pontuacao"].values[0] * quantidade
+
+    cupom_row = combo_cupons.cupons_data.loc[combo_cupons.cupons_data["Cupom_Médico"] == selected_cupom]
+    pontuacao_cupom = cupom_row["Pontos"].values[0]
+    
+    percentual_atingido = (pontuacao_cupom / pontuacao_produto) * 100
+
+    # Incrementar o índice antes de gerar o código aleatório
+    indice_aleatorio += 1
+
+    # Gerar código PRMC + 0000 + número aleatório a partir de 01670 e crescente
+    codigo_troca = f"PRMC0000{indice_aleatorio:04d}"
+
+    # Salvar o índice aleatório no arquivo após a troca
+    salvar_indice_aleatorio()
+
+    # Debitar a pontuação do cupom na base de dados (planilha)
+    novo_saldo = pontuacao_cupom - pontuacao_produto
+    combo_cupons.cupons_data.loc[combo_cupons.cupons_data["Cupom_Médico"] == selected_cupom, "Pontos"] = novo_saldo
+
+    # Salvar a alteração na planilha
+    combo_cupons.cupons_data.to_excel("C:/Users/Beep Saude.BEEP1441/OneDrive/Documentos/Sales/Teste_Calculadora/Calculadora_TrocaDePontos/Calculadora_PontosMédicos.xlsx", index=False)
+
+    # Registrar a troca no arquivo CSV
+    registrar_troca(codigo_troca, selected_cupom, selected_produto, quantidade)
+
+    # Atualizar o resultado na interface
+    label_resultado.config(text=f"Troca aceita! Código: {codigo_troca}. Novo saldo do cupom {selected_cupom}: {novo_saldo} pontos. Percentual atingido: {percentual_atingido:.0f}%")
+
+def cancelar_troca():
+    selected_cupom = combo_cupons.get().split(" - ")[0]
+    selected_produto = combo_produtos.get()
+
+    # Obter a quantidade de produtos selecionados
+    try:
+        quantidade = int(entry_quantidade.get())
+    except ValueError:
+        quantidade = 1
+
+    # Obter a pontuação do produto
+    produto_row = combo_produtos.produtos_data.loc[combo_produtos.produtos_data["Nome do Produto"] == selected_produto]
+    pontuacao_produto = produto_row["Pontuacao"].values[0] * quantidade
+
+    # Adicionar a pontuação de volta ao cupom na base de dados (planilha)
+    novo_saldo = combo_cupons.cupons_data.loc[combo_cupons.cupons_data["Cupom_Médico"] == selected_cupom, "Pontos"].values[0] + pontuacao_produto
+    combo_cupons.cupons_data.loc[combo_cupons.cupons_data["Cupom_Médico"] == selected_cupom, "Pontos"] = novo_saldo
+
+    # Salvar a alteração na planilha
+    combo_cupons.cupons_data.to_excel("C:/Users/Beep Saude.BEEP1441/OneDrive/Documentos/Sales/Teste_Calculadora/Calculadora_TrocaDePontos/Calculadora_PontosMédicos.xlsx", index=False)
+
+    # Registrar a troca cancelada no arquivo CSV de registro
+    registro_trocas = "C:/Users/Beep Saude.BEEP1441/OneDrive/Documentos/Sales/Teste_Calculadora/Calculadora_TrocaDePontos/registro_trocas.csv"
+    data_troca = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    codigo_troca = f"CAN0000{indice_aleatorio:04d}"  # Gerar um código de cancelamento
+    nova_troca_cancelada = {"Código de Troca": codigo_troca, "Cupom": selected_cupom, "Produto": selected_produto, "Quantidade": quantidade, "Data": data_troca}
+
+    if os.path.isfile(registro_trocas):
+        df_registro = pd.read_csv(registro_trocas)
+    else:
+        df_registro = pd.DataFrame(columns=["Código de Troca", "Cupom", "Produto", "Quantidade", "Data"])
+
+    # Adicionar a troca cancelada ao DataFrame
+    df_registro = df_registro.append(nova_troca_cancelada, ignore_index=True)
+
+    # Salvar o DataFrame atualizado no arquivo CSV
+    df_registro.to_csv(registro_trocas, index=False)
+
+    # Atualizar o resultado na interface
+    label_resultado.config(text=f"Troca cancelada! Pontuação do cupom {selected_cupom} restaurada para {novo_saldo} pontos.")
+
+# Criar a janela principal
+janela = tk.Tk()
+janela.title("Lista de Cupons e Produtos Beep")
+
+# Campo de entrada para quantidade de produtos
+label_quantidade = tk.Label(janela, text="Quantidade:")
+label_quantidade.grid(row=0, column=2, pady=10)
+
+entry_quantidade = tk.Entry(janela)
+entry_quantidade.grid(row=0, column=3, pady=10)
+
+# Botão para cancelar troca
+botao_cancelar_troca = tk.Button(janela, text="Cancelar Troca", command=cancelar_troca)
+botao_cancelar_troca.grid(row=5, column=0, columnspan=2, pady=20)
+
+# Variável para armazenar o cupom médico selecionado
+cupom_selecionado = tk.StringVar()
+
+# Criar a lista suspensa de cupons com título personalizado
+combo_cupons = ttk.Combobox(janela, textvariable=cupom_selecionado, width=80, height=20)
+combo_cupons.grid(row=0, column=0, pady=10)
+combo_cupons.bind("<<ComboboxSelected>>", selecionar_cupom)
+combo_cupons.set("Cupom")  # Definir o título do combo_cupons
+
+# Variável para armazenar o produto selecionado
+produto_selecionado = tk.StringVar()
+
+# Criar a lista suspensa de produtos com título personalizado
+combo_produtos = ttk.Combobox(janela, textvariable=produto_selecionado, width=80, height=20)
+combo_produtos.grid(row=0, column=1, pady=10)
+combo_produtos.bind("<<ComboboxSelected>>", selecionar_produto)
+combo_produtos.set("Produtos")  # Definir o título do combo_produtos
+
+# Botão para carregar dados de cupons e produtos
+botao_carregar = tk.Button(janela, text="Carregar Dados", command=carregar_dados)
+botao_carregar.grid(row=1, column=0, columnspan=2, pady=10)
+
+# Botão para verificar pontuação
+botao_verificar = tk.Button(janela, text="Verificar Pontuação", command=verificar_pontuacao)
+botao_verificar.grid(row=2, column=0, columnspan=2, pady=10)
+
+# Botão para aceitar troca
+botao_aceitar_troca = tk.Button(janela, text="Aceitar Troca", command=aceitar_troca)
+botao_aceitar_troca.grid(row=3, column=0, columnspan=2, pady=10)
+
+# Rótulo para exibir o resultado da verificação
+label_resultado = tk.Label(janela, text="")
+label_resultado.grid(row=4, column=0, columnspan=2, pady=10)
+
+# Iniciar o loop de eventos
+janela.mainloop()
